@@ -308,28 +308,34 @@ class ProductsService {
 	}
 
 	getSortQuery({ sort, search }) {
-		const isSearchUsed =
-			search &&
-			search.length > 0 &&
-			search !== 'null' &&
-			search !== 'undefined';
+		const isSearchUsed = this.isSearchValid(search);
+	
 		if (sort === 'search' && isSearchUsed) {
 			return { score: { $meta: 'textScore' } };
-		} else if (sort && sort.length > 0) {
-			const fields = sort.split(',');
-			return Object.assign(
-				...fields.map(field => ({
-					[field.startsWith('-') ? field.slice(1) : field]: field.startsWith(
-						'-'
-					)
-						? -1
-						: 1
-				}))
-			);
+		} else if (this.isSortValid(sort)) {
+			return this.buildSortQuery(sort);
 		} else {
 			return null;
 		}
 	}
+	
+	isSearchValid(search) {
+		return search && search.length > 0 && search !== 'null' && search !== 'undefined';
+	}
+	
+	isSortValid(sort) {
+		return sort && sort.length > 0;
+	}
+	
+	buildSortQuery(sort) {
+		return sort.split(',').reduce((acc, field) => {
+			const key = field.startsWith('-') ? field.slice(1) : field;
+			const order = field.startsWith('-') ? -1 : 1;
+			acc[key] = order;
+			return acc;
+		}, {});
+	}
+	
 
 	getProjectQuery(fieldsArray) {
 		let salePrice = '$sale_price';
@@ -970,45 +976,59 @@ class ProductsService {
 	}
 
 	changeProperties(item, domain) {
-		if (item) {
-			if (item.id) {
-				item.id = item.id.toString();
-			}
-
-			item.images = this.getSortedImagesWithUrls(item, domain);
-
-			if (item.category_id) {
-				item.category_id = item.category_id.toString();
-
-				if (item.categories && item.categories.length > 0) {
-					const category = item.categories[0];
-					if (category) {
-						if (item.category_name === '') {
-							item.category_name = category.name;
-						}
-
-						if (item.category_slug === '') {
-							item.category_slug = category.slug;
-						}
-
-						const categorySlug = category.slug || '';
-						const productSlug = item.slug || '';
-
-						if (item.url === '') {
-							item.url = url.resolve(domain, `/${categorySlug}/${productSlug}`);
-						}
-
-						if (item.path === '') {
-							item.path = `/${categorySlug}/${productSlug}`;
-						}
-					}
-				}
-			}
-			item.categories = undefined;
-		}
-
+		if (!item) return item;
+	
+		this.processId(item);
+		this.processImages(item, domain);
+		this.processCategory(item, domain);
+		item.categories = undefined;
+	
 		return item;
 	}
+	
+	processId(item) {
+		if (item.id) {
+			item.id = item.id.toString();
+		}
+	}
+	
+	processImages(item, domain) {
+		item.images = this.getSortedImagesWithUrls(item, domain);
+	}
+	
+	processCategory(item, domain) {
+		if (item.category_id) {
+			item.category_id = item.category_id.toString();
+			if (item.categories && item.categories.length > 0) {
+				const category = item.categories[0];
+				if (category) {
+					this.updateCategoryDetails(item, category, domain);
+				}
+			}
+		}
+	}
+	
+	updateCategoryDetails(item, category, domain) {
+		if (item.category_name === '') {
+			item.category_name = category.name;
+		}
+	
+		if (item.category_slug === '') {
+			item.category_slug = category.slug;
+		}
+	
+		const categorySlug = category.slug || '';
+		const productSlug = item.slug || '';
+	
+		if (item.url === '') {
+			item.url = url.resolve(domain, `/${categorySlug}/${productSlug}`);
+		}
+	
+		if (item.path === '') {
+			item.path = `/${categorySlug}/${productSlug}`;
+		}
+	}
+	
 
 	isSkuExists(sku, productId) {
 		let filter = {
